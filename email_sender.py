@@ -46,6 +46,8 @@ class EmailSenderApp:
         self.message_text.insert(tk.END, os.getenv("BODY"))
         self.message_text.grid(row=3, column=1, padx=5, pady=5, sticky=tk.EW)
 
+        self.attachment_file_paths = []
+
         self.recipients_label = ttk.Label(root, text="Attachment List:")
         self.recipients_label.grid(row=4, column=0, padx=5, pady=5, sticky=tk.EW)
         self.recipients_button = ttk.Button(root, text="Choose File", command=self.choose_file)
@@ -63,10 +65,16 @@ class EmailSenderApp:
 
 
     def choose_file(self):
-        file_paths = filedialog.askopenfilename(filetypes=[("Text files", "*.txt"), ("All files", "*.*")])
-        if file_paths:
-            self.attachment_file_paths = file_paths
+        file_paths = filedialog.askopenfilenames(filetypes=[("All files", "*.*")])
 
+        if file_paths:
+            self.attachment_file_paths.extend(file_paths)
+
+            file_names = [os.path.basename(path) for path in file_paths]
+            self.recipients_button.config(text=f"Selected Files: {', '.join(file_names)}")
+
+        self.attachment_file_paths = file_paths
+        
 
     def send_emails(self):
         sender_email = self.sender_email_entry.get()
@@ -85,7 +93,8 @@ class EmailSenderApp:
             messagebox.showerror("Error", "Invalid schedule time formate. Please use YYYY-MM-DD HH:MM.")
             return
         
-        recipients = os.getenv('TO_EMAILS').split(',')
+        recipients_str = os.getenv('TO_EMAILS')
+        recipients = recipients_str.split(',')
 
         while datetime.now() < schedule_time:
             time.sleep(60)
@@ -106,15 +115,19 @@ class EmailSenderApp:
         msg['Subject'] = subject
         msg.attach(MIMEText(message, 'plain'))
 
-        if hasattr(self, 'attachment_file_path'):
+        if hasattr(self, 'attachment_file_paths') and self.attachment_file_paths:
             for attachment_path in self.attachment_file_paths:
-                print("Attachment file path:", attachment_path)
-                with open(attachment_path, 'rb') as attachment:
-                    part = MIMEBase('application', 'octet-stream')
-                    part.set_payload(attachment.read())
-                encoders.encode_base64(part)
-                part.add_header('Content-Disposition', f"attachment; filename={os.path.basename(attachment_path)}")
-                msg.attach(part)
+                try:
+                    with open(attachment_path, 'rb') as attachment:
+                        part = MIMEBase('application', 'octet-stream')
+                        part.set_payload(attachment.read())
+                    encoders.encode_base64(part)
+                    part.add_header('Content-Disposition', f"attachment; filename={os.path.basename(attachment_path)}")
+                    msg.attach(part)
+                except FileNotFoundError:
+                    print(f"File not found: {attachment_path}")
+        else:
+           print("No attachments selected")
         
         with smtplib.SMTP(smtp_server, smtp_port) as smtp:
             smtp.starttls()
